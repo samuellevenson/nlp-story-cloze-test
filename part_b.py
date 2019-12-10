@@ -84,7 +84,11 @@ def train(args, train_dataset, model, tokenizer):
                 scheduler.step()  # update learning rate schedule
                 model.zero_grad()
                 global_step += 1
-    
+
+        results = evaluate(args, model, tokenizer)
+        print("epoch acc: " + str(results["eval_acc"]))
+        print("epoch loss: " + str(results["eval_loss"]))
+            
     return global_step, tr_loss / global_step
 
 def evaluate(args, model, tokenizer, prefix="", test=False):
@@ -184,14 +188,12 @@ def load_examples(args, tokenizer, evaluate=False, test=False):
     return dataset
 
 def to_csv(preds, ids, csv_name):
-    csv_output = "Id,Prediction\n"
+    csv_output = "preds\n"
     for i in range(0, len(preds) - 1):
-        csv_output += str(ids[i]) + "," + str(preds[i]) + "\n"
+        csv_output += str(preds[i]) + "\n"
     f = open(csv_name, "w")
     f.write(csv_output)
     f.close()
-    print(preds)
-    print(ids)
 
 def main():
     # set up parser
@@ -202,6 +204,8 @@ def main():
     parser.add_argument("--model_name_or_path", default=None, type=str, required=True)
     parser.add_argument("--output_dir", default=None, type=str, required=True)
     #optional args
+    parser.add_argument("--save_dir", default="", type=str)
+    parser.add_argument("--from_save", action='store_true')
     parser.add_argument("--max_seq_length", default=128, type=int)
     parser.add_argument("--do_test", action='store_true')
     parser.add_argument("--learning_rate", default=5e-5, type=float)
@@ -222,9 +226,24 @@ def main():
     model = BertForMultipleChoice.from_pretrained(args.model_name_or_path, config=config)
 
     # training
-    train_dataset = load_examples(args, tokenizer)
-    global_step, tr_loss = train(args, train_dataset, model, tokenizer)
-    logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
+    if not args.from_save:
+        train_dataset = load_examples(args, tokenizer)
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+        logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
+
+        # save model
+        # Create output directory if needed
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+
+        logger.info("Saving model checkpoint to %s", args.output_dir)
+        # Save a trained model, configuration and tokenizer using `save_pretrained()`.
+        # They can then be reloaded using `from_pretrained()`
+        model.save_pretrained(args.output_dir)
+        tokenizer.save_pretrained(args.output_dir)
+    else:
+        model = BertForMultipleChoice.from_pretrained(args.save_dir)
+        tokenizer = BertTokenizer.from_pretrained(args.save_dir)
 
     # evaluation
     results = {}
