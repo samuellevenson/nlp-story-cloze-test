@@ -97,7 +97,7 @@ class RocStoriesProcessor(DataProcessor):
                 contexts = [line[1] + " " + line[2] + " " + line[3],
                             line[1] + " " + line[2] + " " + line[3]],
                 endings = [line[5], line[6]],
-                label = line[7] if type != "test" else None
+                label = line[7] if type != "test" else 1
             ) for line in lines[1:]  # skip the line with the column names
         ]
 

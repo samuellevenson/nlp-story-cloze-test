@@ -36,7 +36,7 @@ def simple_accuracy(preds, labels):
 def train(args, train_dataset, model, tokenizer):
 
     train_sampler = RandomSampler(train_dataset)
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size)
 
     t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
@@ -47,15 +47,15 @@ def train(args, train_dataset, model, tokenizer):
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total)
+    scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
 
     # train
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(train_dataset))
     logger.info("  Num Epochs = %d", args.num_train_epochs)
-    logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
+    logger.info("  Instantaneous batch size per GPU = %d", args.batch_size)
     logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d",
-                args.batch_size * args.gradient_accumulation_steps * (torch.distributed.get_world_size() if args.local_rank != -1 else 1))
+                args.batch_size * args.gradient_accumulation_steps)
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
@@ -64,7 +64,7 @@ def train(args, train_dataset, model, tokenizer):
     model.zero_grad()
     train_iterator = trange(int(args.num_train_epochs), desc="Epoch")
     for _ in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration")
         for step, batch in enumerate(epoch_iterator):
             model.train()
             inputs = {'input_ids':      batch[0],
@@ -100,7 +100,7 @@ def evaluate(args, model, tokenizer, prefix="", test=False):
     # evaluate
     logger.info("***** Running evaluation {} *****".format(prefix))
     logger.info("  Num examples = %d", len(eval_dataset))
-    logger.info("  Batch size = %d", args.eval_batch_size)
+    logger.info("  Batch size = %d", args.batch_size)
     eval_loss = 0.0
     nb_eval_steps = 0
     preds = None
@@ -142,7 +142,7 @@ def evaluate(args, model, tokenizer, prefix="", test=False):
     with open(output_eval_file, "w") as writer:
         logger.info("***** Eval results {} *****".format(str(prefix) + " is test:" + str(test)))
         writer.write("model           =%s\n" % str(args.model_name_or_path))
-        writer.write("total batch size=%d\n" % (args.per_gpu_train_batch_size * args.gradient_accumulation_steps))
+        writer.write("total batch size=%d\n" % (args.batch_size * args.gradient_accumulation_steps))
         writer.write("train num epochs=%d\n" % args.num_train_epochs)
         writer.write("max seq length  =%d\n" % args.max_seq_length)
         for key in sorted(result.keys()):
@@ -208,7 +208,10 @@ def main():
     parser.add_argument("--num_train_epochs", default=3.0, type=float)
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
-    parser.add_argument('--logging_steps', type=int, default=50)
+    parser.add_argument("--weight_decay", default=0.0, type=float)
+    parser.add_argument("--adam_epsilon", default=1e-8, type=float)
+    parser.add_argument("--max_grad_norm", default=1.0, type=float)
+    parser.add_argument("--warmup_steps", default=0, type=int)
     args = parser.parse_args()
 
     logger.info("Training/evaluation parameters %s", args)
@@ -219,7 +222,7 @@ def main():
     model = BertForMultipleChoice.from_pretrained(args.model_name_or_path, config=config)
 
     # training
-    train_dataset = load_examples(args, args.task_name, tokenizer, evaluate=False)
+    train_dataset = load_examples(args, tokenizer)
     global_step, tr_loss = train(args, train_dataset, model, tokenizer)
     logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 

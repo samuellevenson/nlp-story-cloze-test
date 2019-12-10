@@ -1,0 +1,12 @@
+export ROC_DIR=./data
+python ./part_b.py \
+--model_type bert \
+--model_name_or_path mini \
+--data_dir $ROC_DIR \
+--output_dir out \
+--max_seq_length 80 \
+--do_test \
+--learning_rate 5e-5 \
+--num_train_epochs 3 \
+--batch_size 16 \
+--gradient_accumulation_steps 2
